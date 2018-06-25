@@ -20,11 +20,11 @@ import time
 import os
 import json
 
-FILE_PATH    = '../res/dialogueText_301.csv'
-MAX_LENGTH   = 150
-NR_WORDPIECE = 512
-TRAINING_TIME = 6*24*60*60
-LATENT_DIM   = 256
+FILE_PATH    = '../res/dialogueText_301.csv'	# Not included, too big for Github
+MAX_LENGTH   = 150			# max length of sentence
+NR_WORDPIECE = 512			# Number of unique wordpieces
+TRAINING_TIME = 6*24*60*60		# Training time in seconds
+LATENT_DIM   = 256			# dimensionality of output
 
     
 
@@ -87,23 +87,19 @@ def one_hot_decode(encoded_seq):
     return [argmax(vector) for vector in encoded_seq]
 
 
-# configure problem
-n_features      = NR_WORDPIECE
-n_timesteps_in  = MAX_LENGTH
-n_timesteps_out = MAX_LENGTH
-
-#'categorical_crossentropy'
-
 #define model
 model = Sequential()
 model.add(Masking(mask_value=0.,input_shape=(MAX_LENGTH, NR_WORDPIECE)))
-model.add(Bidirectional(LSTM(LATENT_DIM, return_sequences=True)))#, input_shape=(MAX_LENGTH, NR_WORDPIECE)))
+model.add(Bidirectional(LSTM(LATENT_DIM, return_sequences=True)))
 model.add(AttentionDecoder(LATENT_DIM*2, NR_WORDPIECE))
 model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 model.summary()
+
+# If weights are found, load them
 if os.path.isfile('../res/model.h5'):
     model.load_weights('../res/model.h5')
     print("Modelweights loaded")
+
 
 parent_conn, child_conn = Pipe()
 batch_gen_process = Process(target=batch_generator, args=(child_conn,))
@@ -112,13 +108,15 @@ batch_gen_process.start()
 stop = False
 start_time = time.time()
 save_time  = time.time()
+
+# Start training
 while not stop:
     stop = ( time.time() - start_time > TRAINING_TIME )
     X,y = parent_conn.recv()
     parent_conn.send( stop )
     model.fit(X,y,epochs=1, verbose=0)
     
-    # save every 15 min
+    # save model weights every 15 min
     if time.time() - save_time > 15*60:
         save_time = time.time()
         model.save_weights( '../res/model.h5' )
